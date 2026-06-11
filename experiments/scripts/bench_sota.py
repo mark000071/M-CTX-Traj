@@ -78,7 +78,7 @@ def linear_oracle(features, lon, lat, r):
 
 
 def bench(name, factory, feats, queries, oracle, radius_m, n_trials):
-    """Same per-query Python loop harness as cross_region_v10_unified."""
+    """Same per-query Python loop harness as bench_osm_indices."""
     idx = factory()
     t0 = time.perf_counter(); idx.build(feats)
     build_ms = (time.perf_counter() - t0) * 1000.0

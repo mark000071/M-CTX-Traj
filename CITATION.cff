@@ -1,22 +1,9 @@
 cff-version: 1.2.0
-title: "M-CTX: Exact and Scalable Spatial Context Retrieval for Trajectory Analytics"
-message: "If you use this software, please cite the following paper."
+title: "M-CTX"
+message: "If you use this code in your own work, please cite the GitHub repository."
 type: software
 authors:
-  - family-names: "Authors"
-    given-names: "M-CTX"
-identifiers:
-  - type: url
-    value: "https://github.com/mark000071/M-CTX_Traj"
-    description: "Source code repository"
+  - alias: "mark000071"
 repository-code: "https://github.com/mark000071/M-CTX_Traj"
+url: "https://github.com/mark000071/M-CTX_Traj"
 license: MIT
-preferred-citation:
-  type: conference-paper
-  title: "M-CTX: Exact and Scalable Spatial Context Retrieval for Trajectory Analytics"
-  authors:
-    - family-names: "Authors"
-      given-names: "M-CTX"
-  collection-title: "Proceedings of the IEEE International Conference on Data Engineering (ICDE)"
-  year: 2027
-  notes: "Submitted to ICDE 2027."

@@ -4,7 +4,7 @@ Streams 10M synthetic AIS records into B^x-tree under 4 arrival patterns
 (batch, per-record, bursty, out-of-order).  Generates records on the fly
 to avoid holding 10M tuples in Python list memory at once.
 
-Outputs the same fields as streaming_v5.py so it slots into master_results.
+Outputs the same fields as streaming.py so it slots into master_results.
 """
 from __future__ import annotations
 import argparse

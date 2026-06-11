@@ -51,7 +51,7 @@ def check(label, claim, actual, mode=PCT, tol=0.02):
 
 
 def main():
-    print(f"render_check_v8  master.version={MASTER.get('version')}\n")
+    print(f"render_check  master.version={MASTER.get('version')}\n")
     fails = []
     H = MASTER.get("headline", {})
     # streaming 10M

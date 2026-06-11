@@ -1,6 +1,6 @@
 """v9 §A — Real 4-region AIS streaming replay.
 
-Replaces the synthetic uniform records of streaming_v6_10M.py with the
+Replaces the synthetic uniform records of streaming_large.py with the
 actual AIS anchor positions from all 4 regions (DMA, NOAA, Norway,
 Piraeus), feeding them in real timestamp order into a single B^x-tree.
 

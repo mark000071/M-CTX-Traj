@@ -2,7 +2,7 @@
 
 Runs Shapely 2, H3, DuckDB, WarmLinear, and BR-LZ on the Norway corpus
 with the same footprint-sampled query set used in
-cross_region_norway_fix_v6.py.  Closes v6's "external Norway baselines
+bench_norway_oracle_fix.py.  Closes v6's "external Norway baselines
 deferred" note.
 """
 from __future__ import annotations
@@ -26,7 +26,7 @@ from src.osm_index.common import feature_mbrs_from_ways, radius_bbox
 
 # Import bench_* from the v5 ext module
 ext_spec = importlib.util.spec_from_file_location(
-    "_v5ext", Path(__file__).resolve().parent / "cross_region_v5_ext.py")
+    "_v5ext", Path(__file__).resolve().parent / "bench_external_systems.py")
 v5ext = importlib.util.module_from_spec(ext_spec)
 ext_spec.loader.exec_module(v5ext)
 
