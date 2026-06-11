@@ -80,7 +80,6 @@ the dataset on local storage.
   table.
 * `analysis/` — aggregation, audit (`render_check.py`,
   `quantity_crosscheck.py`), and figure scripts.
-* `paper/` — LaTeX source.
 
 ## Adding a new index
 

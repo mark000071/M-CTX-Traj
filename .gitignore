@@ -11,20 +11,6 @@ dist/
 .pytest_cache/
 .mypy_cache/
 
-# --- LaTeX ---
-paper/*.aux
-paper/*.log
-paper/*.out
-paper/*.toc
-paper/*.bbl
-paper/*.blg
-paper/*.synctex.gz
-paper/*.fdb_latexmk
-paper/*.fls
-paper/*.pdf       # un-comment to commit the built PDF; we ship one for reference
-paper/_minted-*
-!paper/main.pdf
-
 # --- Experiment outputs (kept out of git; reproduce locally) ---
 experiments/runs/
 data/

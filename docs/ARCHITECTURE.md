@@ -63,9 +63,9 @@ verifies recall against a linear-scan oracle.
 
 * `analysis/build_master_results.py` aggregates run JSONs under
   `experiments/runs/` into a single `master_results.json`.
-* `analysis/render_check.py` walks `paper/sections/*.tex` and
-  cross-checks each quantitative claim against the master JSON within
-  ±2% (exact for recall and counts).
+* `analysis/render_check.py` cross-checks each quantitative claim in
+  the paper against the master JSON within ±2% (exact for recall and
+  counts).
 * `analysis/quantity_crosscheck.py` re-derives every speed-up ratio
   from its two source numbers and flags any drift.
 
