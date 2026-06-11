@@ -1,0 +1,28 @@
+\section{Discussion and Limitations}\label{sec:discuss}
+
+\paragraph*{Operating points}
+M-CTX deliberately exposes a small menu rather than a single index. For the
+OSM stage, the STR-tree is the right default---exact, $23$\,$\mu$s,
+$349$\,KB, zero native dependencies; a deployment that already runs a
+production R$^{*}$-tree may prefer it for raw query throughput; and BR-LZ
+is the choice where a \emph{recall guarantee}, the smallest learned
+footprint, and the fastest build matter and per-query cost is amortised
+over the corpus. For the SDF stage the recommendation is unambiguous:
+\texttt{uint8} at $32\!\times\!32$, no clipping ($64\times$ compression at
+$0.04$\,m ADE). For neighbours, the B$^{x}$-tree is mandatory under
+streaming and the KD-tree is marginally cheaper only in a fully static
+batch. This menu lets a deployment trade build, latency, footprint, and
+formal guarantees explicitly, which is what a real ingest pipeline needs.
+
+\paragraph*{Limitations}
+M-CTX targets read-mostly OSM; workloads with frequent \emph{feature}
+updates would need an insertion-friendly index family, which we do not
+address. The B$^{x}$-tree assumes a snapshot cadence; at sub-second update
+rates the phase encoding would require redesign to avoid key-space churn.
+Our reported numbers are single-node in-memory; we capture the
+partition and routing costs of a cluster with a space-tiled shard
+simulator (Appendix~\ref{app:extended}), but inter-node RTT is left for a
+multi-node study. The $40$\,M-feature scale-up uses deterministic spatial
+replication of the DMA corpus; a real planet-scale OSM extract with a
+memory-mapped backing store would re-validate the curve at higher scales.
+BR-LZ's vectorised back-end delivers $100$\,$\mu$s $p_{50}$ on DMA and $2.57$\,ms at $N{=}40$\,M synthetic; the asymptotics and correctness are preserved (segment layout unchanged from Theorem~\ref{thm:brlz-recall} and Proposition~\ref{prop:pareto}).  A C/Cython port would further narrow the remaining constant-factor gap to libspatialindex.

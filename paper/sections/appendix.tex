@@ -1,0 +1,106 @@
+\section{Complexity Analysis}\label{app:theory}
+
+We give worst-case bounds for each index and a lower bound on the
+workload, establishing that M-CTX is within a constant factor of optimal.
+
+\paragraph*{OSM indices}
+The STR-tree builds in $O(N\log N)$ and queries in $O(M\log_M N+K)$;
+BR-LZ sorts in $O(N\log N)$, fits $S$ segments in $O(N)$, and queries in
+$O(\log N+\sqrt N)$ at $S^\star\!=\!\Theta(\sqrt N)$
+(Section~\ref{ssec:pareto}); the R$^{*}$-tree gives $O(\log_B N+K)$
+queries~\cite{beckmann1990rstar}.
+
+\paragraph*{SDF compute}
+The quadratic kernel costs $O(HW\!\cdot\!M)$; the FH transform costs
+$\Theta(HW)$~\cite{felzenszwalb2004distance}, so the speed-up is
+$\Theta(M)$---the occupancy scaling of Table~\ref{tab:sdf-scene}. Any
+exact EDT inspects $\Omega(HW)$ cells, so M-CTX is asymptotically optimal.
+Table~\ref{tab:sdf-extreme} confirms this into the high-resolution regime.
+
+\begin{table}[t]
+\centering
+\caption{SDF compute at grids $256$/$512$ (ms/sample). The quadratic
+kernel exceeds $5$\,s at $g{=}512$; M-CTX is
+occupancy-invariant.}\label{tab:sdf-extreme}
+\small
+\begin{tabular}{llrrr}
+\toprule
+grid & occ. & naive (ms) & M-CTX (ms) & speed-up \\
+\midrule
+256 & 1\%  & $498.8$  & $4.20$ & $119\times$ \\
+256 & 10\% & $4\,060$ & $5.89$ & $689\times$ \\
+512 & 1\%  & $5\,434$ & $21.4$ & $254\times$ \\
+512 & 10\% & $54\,920$& $23.4$ & $\mathbf{2\,343\times}$ \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\paragraph*{Neighbour index and workload bound}
+A B$^{x}$-tree insert is $O(\log N)$ and a query $\Theta(K+\alpha)$ with
+$\alpha\!=\!O(\sqrt N)$ Morton false positives removed exactly by the
+radius filter~\cite{moon2001hilbert}. A correct per-anchor answer must
+touch
+$\Omega(\log N_{\mathrm{OSM}}+g^2+\log N_{\mathrm{ships}}+K_{\mathrm{OSM}}+k)$
+elements~\cite{guibas1978fractional,vaidya1989optimal}; M-CTX matches
+every term up to a constant.
+
+\section{Joint Context Index}\label{app:jcx}
+
+The optional Joint Context Index (JCX) binds the three sub-queries to a
+common Morton-cell grid of depth $B$. Each cell stores the OSM
+\texttt{FeatureMBR}s whose centroid falls inside it, an optional coarse
+SDF tile, and the AIS records (also held in a global sorted list keyed by
+$\mathrm{phase}\Vert\operatorname{Morton}_B$ so streaming inserts stay
+$O(\log N)$). A query enumerates the overlapping cells once and returns
+all three answers in amortised $O(\log N_{\mathrm{joint}}+K)$; because the
+cell enumeration is a superset of the per-index answers, JCX inherits the
+exact recall of its constituents. JCX shares one spatial-localisation step
+where the three-index composition pays three; a native cell-dispatch
+back-end realises that saving in absolute wall-clock.
+
+\section{Extended Scaling and Deployment}\label{app:extended}
+
+\paragraph*{Hyper-parameter ablations}
+Figure~\ref{fig:ablation} compiles the sweeps referenced in the main text.
+The STR page size has a shallow optimum near $M\!=\!16$; the learned-index
+segment count degrades smoothly past $S\!=\!64$ (consistent with
+$S^\star\!=\!\Theta(\sqrt N)$); and the B$^{x}$-tree phase length matters
+$<\!4\%$ across an order of magnitude. All three indices are therefore
+robust to their hyper-parameters around the defaults used throughout.
+
+\begin{figure}[t]
+\centering
+\includegraphics[width=0.32\columnwidth]{fig_ablation_str_pagesize.pdf}\hfill
+\includegraphics[width=0.32\columnwidth]{fig_ablation_learned_segments.pdf}\hfill
+\includegraphics[width=0.32\columnwidth]{fig_ablation_bx_phase.pdf}
+\caption{Hyper-parameter ablations: STR page size $M$ (left), BR-LZ
+segment count $S$ (centre), B$^{x}$-tree phase length $T$ (right).}
+\label{fig:ablation}
+\end{figure}
+
+
+\paragraph*{Space-tiled sharding}
+A kd-tree median-split partition of the merged four-region corpus into $S$
+disjoint cells keeps the mean shards touched per query below $1.08$ and
+scales throughput to $2.99\times$ at $S\!=\!16$ (Fig.~\ref{fig:shard}),
+confirming M-CTX partitions cleanly for multi-node deployment; inter-node
+RTT is the only deployment cost not captured by the single-host
+simulator.
+
+\begin{figure}[t]
+\centering
+\includegraphics[width=0.9\columnwidth]{fig_shard_kdtree.pdf}
+\caption{Space-tiled shard simulator: throughput and mean shards touched
+per query vs shard count.}\label{fig:shard}
+\end{figure}
+
+\section{Reproducibility}\label{app:repro}
+
+Every reported number traces to a JSON artefact aggregated into a master
+record and cross-validated by an automated audit that re-derives each
+speed-up ratio from its sources and flags drift. A staged runner replays
+every experiment from a fresh checkout with completion markers (a full
+clean replay is $\sim\!4$ hours, dominated by OSM tile load). The
+environment is Python~3.11 with NumPy, SciPy, PyTorch, Shapely~2, h3-py,
+DuckDB, and libspatialindex; exact versions and per-table commands ship
+with the code release.

@@ -1,0 +1,26 @@
+\section{Conclusion}\label{sec:conclusion}
+
+We showed that context retrieval---not model inference---is the dominant
+cost of context-aware maritime trajectory prediction, and that it is a
+previously unrecognised spatial database workload. M-CTX recasts it as
+such and accelerates it by two to three orders of magnitude with provable
+correctness and bit-exact downstream equivalence. Its algorithmic core,
+BR-LZ, is the first one-curve learned spatial index with a recall-completeness
+proof and a segment-local extent that is provably tighter than the
+expansion competitors require; its systems contributions---a $163\times$
+linear-time SDF engine and a $64\times$ storage co-design---turn a
+multi-CPU-day, multi-machine pipeline into a single-machine one. Across
+four real maritime regions, nine baseline systems, scaling to $40$\,M
+features, and $10^{7}$-record streaming, M-CTX preserves four pretrained
+models' predictions byte-for-byte while cutting context construction from
+hours to minutes.
+
+The lesson generalises beyond maritime analytics: the retrieval workloads
+hidden inside large spatiotemporal learning pipelines are first-class
+database problems, and learned-index machinery---once equipped with the
+recall guarantees those workloads demand---transfers cleanly to them. We
+expect the BR-LZ recall theorem, the storage--accuracy co-design, and the
+bit-exact drop-in discipline to carry directly to autonomous driving and
+urban mobility, where context retrieval is the same un-indexed
+bottleneck. M-CTX is released as an open drop-in replacement for the
+standard context pipeline.

@@ -1,0 +1,86 @@
+\section{Problem Formulation and Workload Characterization}\label{sec:problem}
+
+\subsection{The context-retrieval workload}
+Context-aware trajectory prediction augments each AIS \emph{anchor}---a
+position fix $a=(\mathrm{lat},\mathrm{lon},t)$---with a spatial context
+window before it is fed to the predictor. Formally, given a static set of
+$N$ OSM features $F=\{f_1,\dots,f_N\}$ (each a 2-D MBR with a category
+tag) and a stream $S$ of timestamped vessel positions, the pipeline must
+compute, for every anchor $a$, the triple
+\begin{equation}
+\mathcal{C}(a)=\bigl(\,\underbrace{R_F(a,r_1)}_{\text{OSM range}},\;
+\underbrace{D(a)}_{\text{SDF}},\;
+\underbrace{K_S(a,r_2,k)}_{\text{$k$NN}}\,\bigr),
+\end{equation}
+where $R_F(a,r_1)=\{f\in F: f.\mathrm{MBR}\cap B(a,r_1)\neq\emptyset\}$ is
+the set of features whose MBR intersects the $r_1\!=\!5$\,km query box;
+$D(a)\in\mathbb{R}^{H\times W\times 2}$ is the pair of
+$128\!\times\!128$ signed distance fields over that patch; and
+$K_S(a,r_2,k)$ are the $k$ nearest vessels within $r_2\!=\!3$\,km in the
+current snapshot. A training corpus evaluates $\mathcal{C}$ over millions
+of anchors, so the workload is \emph{ingest-once, query-many}: $F$ and the
+historical $S$ are built once and queried hundreds of thousands of times.
+
+\subsection{Profiling: the context dominates}
+Table~\ref{tab:profile} replays each stage of the reference pipeline in
+isolation on a $1\,000$-anchor subset. Two facts stand out. First, the
+\emph{model is not the cost}: the three retrieval stages account for
+essentially the entire per-anchor wall-clock. Second, within them the SDF
+stage dominates ($176.4$\,ms/anchor, $50\%$ of the total), and $89\%$ of
+that is spent in the quadratic distance transform \texttt{\_udist}; the
+neighbour scan adds a further $25\%$. Extrapolated to the
+$5.48$-million-anchor corpus, context construction costs
+$\approx\!17$ CPU-days---before a single training epoch begins.
+
+\begin{table}[t]
+\centering
+\caption{Per-stage cost of the reference context pipeline on a
+$1\,000$-anchor subset (single-thread CPU). The three retrieval stages
+are the entire budget; the SDF stage dominates.}\label{tab:profile}
+\small
+\begin{tabular}{lrrl}
+\toprule
+Stage & wall-clock & per-anchor & dominant cost \\
+\midrule
+OSM tile load + parse & $85.2$\,s  & one-time   & cold file I/O \\
+SDF compute           & $176.4$\,s & $176.4$\,ms & \texttt{\_udist} ($89\%$) \\
+Neighbour scan        & $88.2$\,s  & $88.2$\,ms  & brute-force scan \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\subsection{Why brute force is the wrong default}
+Each stage is a database query forced into a linear pass. The OSM stage
+recomputes a tile id per anchor, reloads JSON, and re-parses it---no index
+at all---so it pays $O(N)$ per query and cold I/O on every miss. The SDF
+stage runs an $O(HW\!\cdot\!M)$ per-pixel nearest-neighbour loop where the
+exact field is computable in $O(HW)$. The neighbour stage rescans the full
+snapshot per anchor instead of indexing the moving points. The workload
+therefore exhibits three classic database fingerprints---static range,
+streaming $k$NN, and output-sensitive distance transform---and the central
+question of this paper is how to index it \emph{with correctness
+guarantees and without perturbing the downstream model}. We answer it with
+the M-CTX framework (Section~\ref{sec:overview}).
+
+\subsection{Design goals and the amplification metric}\label{ssec:goals}
+The reformulation fixes three goals that an indexed implementation must
+meet before a production pipeline will adopt it. \textbf{(G1) Correctness:}
+each stage must return exactly the brute-force answer---for the range
+stage we demand \emph{provable} recall, not merely high empirical recall.
+\textbf{(G2) Amortised efficiency:} because the workload is
+ingest-once/query-many, the figure of merit is the sum of build,
+per-query, and footprint costs over the corpus, not query latency in
+isolation. \textbf{(G3) Drop-in equivalence:} the emitted context must be
+numerically identical to the reference, so downstream predictions are
+unchanged. We further track, for the range stage, the \emph{candidate
+amplification}
+\begin{equation}
+\alpha(q)=\frac{|\{\text{features scanned by the exact filter}\}|}{|R_F(q)|},
+\end{equation}
+the average number of exact-MBR tests performed per true hit. For any
+recall-complete index $\alpha\!\ge\!1$, and minimising $\alpha$ at recall
+$1.0$ is the central efficiency lever a learned range index controls;
+BR-LZ minimises it among recall-complete one-curve indices
+(Section~\ref{ssec:extent}). These three goals and the amplification
+metric organise the design of M-CTX and the evaluation of
+Section~\ref{sec:bench}.

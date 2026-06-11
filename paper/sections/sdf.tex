@@ -1,0 +1,188 @@
+\section{Linear-Time SDF and Storage Co-Design}\label{sec:sdf}
+
+The SDF stage is the single largest cost in the reference pipeline
+(Table~\ref{tab:profile}) and the single largest win in M-CTX. For each
+anchor it produces two $128\!\times\!128$ signed distance fields, each the
+product of an unsigned distance field and a sign mask. We make the
+computation asymptotically optimal and then co-design its storage.
+
+\subsection{From quadratic to linear time}
+The reference \texttt{\_udist} kernel materialises a pairwise distance
+matrix and takes a row-wise minimum, costing $\Theta(HW\!\cdot\!M)$ for
+$M$ mask pixels. The exact Felzenszwalb--Huttenlocher
+transform~\cite{felzenszwalb2004distance} computes the identical field in
+$\Theta(HW)$ via two separable parabolic-envelope passes, independent of
+occupancy. M-CTX uses the compiled implementation~\cite{virtanen2020scipy}
+on CPU and a batched variant on GPU. Because both compute the
+\emph{exact} EDT, the substitution is numerically lossless
+(Section~\ref{sec:downstream}) and asymptotically optimal: any algorithm
+emitting the field must touch $\Omega(HW)$ cells.
+
+\begin{table}[t]
+\centering
+\caption{Per-scene SDF latency ($80$ patches/scene, $g{=}128$). The
+linear-time engine is occupancy-invariant, so its speed-up over the
+quadratic kernel grows with mask density.}\label{tab:sdf-scene}
+\small
+\begin{tabular}{lrrrr}
+\toprule
+scene & occupancy (px) & naive (ms) & M-CTX (ms) & speed-up\\
+\midrule
+harbor       & $2066.5$ & $2340.4$ & $1.20$ & $1\,955\times$ \\
+nearshore    & $780.2$  & $1443.5$ & $1.03$ & $1\,402\times$ \\
+constrained  & $474.0$  & $2135.8$ & $1.01$ & $\mathbf{2\,109\times}$ \\
+open\_water  & $5.5$    & $0.16$   & $0.15$ & $1.1\times$ \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+Table~\ref{tab:sdf-scene} reports per-scene latency. At the per-stage
+level the SDF cost drops from $176.4$\,ms to $1.08$\,ms---a
+$\mathbf{163\times}$ reduction---rising to $2\,109\times$ inside a single
+high-occupancy patch, exactly tracking the $\Theta(HW\!\cdot\!M)$ versus
+$\Theta(HW)$ analysis. The advantage widens with resolution: at
+$g\!=\!512$ the quadratic kernel exceeds $5$\,s per sample while M-CTX
+stays $\le\!23$\,ms (Appendix~\ref{app:theory}).
+
+
+\paragraph*{GPU variant}
+For very large batches we provide a batched GPU transform that stacks
+patches along the batch dimension; it amortises kernel-launch overhead and
+wins the entire batch range on our hardware ($0.37$\,ms vs.\ SciPy's
+$0.84$\,ms at batch $64$). On CPU-only deployments the SciPy path is
+already off the critical path, so the GPU engine ships as an optional
+toggle for continental-scale rebuilds.
+
+
+\begin{figure}[t]
+\centering
+\includegraphics[width=0.9\columnwidth]{fig_sdf_by_scene.pdf}
+\caption{Per-scene SDF latency (log scale). The linear-time engine is
+$\sim\!10^{3}\times$ faster than the quadratic kernel in every non-trivial
+scene, and the gap widens with mask occupancy.}\label{fig:sdf-scene}
+\end{figure}
+
+
+\begin{figure}[t]
+\centering
+\includegraphics[width=0.8\columnwidth]{fig_sdf_occupancy.pdf}
+\caption{SDF speed-up grows linearly with mask occupancy, the empirical
+signature of replacing an $\Theta(HW\!\cdot\!M)$ kernel with an
+occupancy-invariant $\Theta(HW)$ one.}\label{fig:sdf-occ}
+\end{figure}
+
+Figure~\ref{fig:sdf-occ} plots the SciPy/naive speed-up against mean mask
+occupancy across the four scene types: the linear trend is the direct
+empirical confirmation of the $\Theta(M)$ analysis, and it is why the
+constrained and harbour scenes---the operationally important ones near
+coastlines---see the largest gains.
+
+\subsection{Storage--accuracy co-design}\label{ssec:storage}
+A bit-exact SDF is wasteful if the model does not use that precision. We
+therefore sweep $4$ data types $\times$ $3$ resolutions $\times$ $4$ clip
+thresholds ($48$ configurations) and measure, on the pretrained
+\texttt{lstm\_env\_sdf} checkpoint over $n\!=\!2\,000$ test samples, the
+ADE each induces. Table~\ref{tab:storage} reports the no-clip frontier
+and Fig.~\ref{fig:storage} the Pareto front.
+
+\begin{table}[t]
+\centering
+\caption{SDF storage--accuracy frontier (no clipping, $n{=}2\,000$ test).
+Compression is against the $128^2$ f16 baseline ($65\,536$\,B).
+\textbf{Bold}: recommended near-lossless config.}\label{tab:storage}
+\small
+\setlength{\tabcolsep}{3pt}
+\begin{tabular}{lrrr}
+\toprule
+dtype $\times$ resolution & B/anchor & compression & $\Delta$ADE (m)\\
+\midrule
+f16 $\times$ $128^2$ (baseline) & $65\,536$ & $1\times$ & $0.000$ \\
+f16 $\times$ $64^2$             & $16\,384$ & $4\times$ & $-0.031$ \\
+uint8 $\times$ $64^2$           & $8\,192$  & $8\times$ & $-0.023$ \\
+f16 $\times$ $32^2$             & $4\,096$  & $16\times$ & $+0.031$ \\
+\textbf{uint8 $\times$ $32^2$}  & $\mathbf{2\,048}$ & $\mathbf{64\times}$ & $\mathbf{+0.038}$ \\
+\bottomrule
+\end{tabular}
+\setlength{\tabcolsep}{6pt}
+\end{table}
+
+\begin{figure}[t]
+\centering
+\includegraphics[width=0.9\columnwidth]{fig_v5_storage_pareto.pdf}
+\caption{SDF storage--accuracy Pareto front (no clipping). Every
+configuration stays far below the $0.5$\,m downstream tolerance; the
+frontier is dominated by \texttt{uint8} on the dtype axis and $32^2$ on
+the resolution axis.}\label{fig:storage}
+\end{figure}
+
+The frontier sits at \textbf{uint8 quantisation $\times$ $32\!\times\!32$}:
+$2\,048$ bytes/anchor, a $\mathbf{64\times}$ compression over the
+as-stored raster, at $\Delta\text{ADE}\!=\!+0.038$\,m---well inside the
+$0.5$\,m tolerance. At corpus scale this turns a $\sim\!720$\,GB SDF
+working set into $\sim\!11$\,GB, the difference between a multi-machine
+and a single-machine pipeline. The one regime to avoid is narrow-band
+magnitude clipping, which adds $\ge\!66$\,m to ADE regardless of dtype:
+the model relies on the long-range SDF magnitude, so the design rule is
+unambiguous---\emph{compress, but never saturate} (full sweep in
+Section~\ref{ssec:precision}).
+
+\subsection{How much SDF precision the model needs}\label{ssec:precision}
+
+Table~\ref{tab:sdf-prec} reports ADE sensitivity across seven SDF
+approximation levels, the study grounding the storage co-design of
+Section~\ref{ssec:storage}. Resolution loss to $32^2$ and $8$-bit
+quantisation are effectively free ($\Delta\text{ADE}\!\le\!0.02$\,m);
+narrow-band clipping is catastrophic ($+66$ to $+104$\,m). Notably a
+$\pm1$\,km clip is \emph{worse} than a $\pm500$\,m clip: the latter
+collapses the SDF to a near-background signal the model safely ignores,
+while the former leaves a half-saturated signal the model is misled to
+trust.
+
+\begin{table}[t]
+\centering
+\caption{SDF precision--accuracy sensitivity ($n{=}2\,000$ test,
+\texttt{lstm\_env\_sdf}); $\Delta$ADE vs the f32 reference
+L0.}\label{tab:sdf-prec}
+\small
+\begin{tabular}{llrr}
+\toprule
+level & description & SDF MAE (m) & $\Delta$ADE (m) \\
+\midrule
+L0 & f32 reference        & $0.0$   & $0.000$ \\
+L1 & f16 storage          & $0.0$   & $0.000$ \\
+L4 & $64^2$               & $0.6$   & $+0.008$ \\
+L5 & $32^2$               & $1.4$   & $+0.020$ \\
+L6 & 8-bit quantisation   & $52.5$  & $-0.003$ \\
+L3 & narrow band $\pm500$\,m & $4\,175$ & $+66.5$ \\
+L2 & narrow band $\pm1$\,km  & $3\,697$ & $+103.7$ \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\begin{figure}[t]
+\centering
+\includegraphics[width=0.9\columnwidth]{fig_sdf_prec.pdf}
+\caption{ADE penalty vs SDF tensor MAE across seven levels.
+Resolution/quantisation losses are free; narrow-band clipping is
+catastrophic.}\label{fig:sdf-prec}
+\end{figure}
+
+\subsection{Two findings the sweep makes precise}\label{ssec:anomaly}
+Two rows of Table~\ref{tab:sdf-prec} carry the design lesson. First,
+\textbf{8-bit quantisation (L6) has large tensor MAE yet zero ADE
+penalty}: uniform $256$-level quantisation injects \emph{unbiased} noise
+that the model's first $1\!\times\!1$ convolution averages out, so the LSTM
+sees only the bulk SDF gradient and $\Delta$ADE is statistically zero. This
+is the standard fixed-point result for distance fields and is exactly why
+the storage frontier (Section~\ref{ssec:storage}) is dominated by
+\texttt{uint8}. Second, \textbf{a $\pm1$\,km clip (L2) is worse than a
+$\pm500$\,m clip (L3)}, inverting the naive expectation that retaining more
+signal helps. The model normalises the SDF by $r$ and clamps to
+$[-1,1]$: a $\pm500$\,m clip yields a near-background
+$\{-0.1,+0.1\}$ signal the model safely ignores (graceful degradation),
+whereas a $\pm1$\,km clip yields a half-saturated $\{-0.2,+0.2\}$ signal
+that shifts the feature distribution while destroying the long-range
+magnitude---so the model is \emph{misled} rather than agnostic. The
+operational rule is therefore not ``clip conservatively'' but
+\emph{``compress, never saturate''}: quantise aggressively along the dtype
+and resolution axes, and keep the full magnitude range.

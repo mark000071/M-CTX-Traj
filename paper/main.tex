@@ -1,0 +1,74 @@
+%% ============================================================
+%%  M-CTX: Recall-Complete Spatial Indexing for
+%%         Context-Aware Maritime Trajectory Analytics
+%%  ICDE submission. Self-contained (embedded bibliography).
+%%  Build: pdflatex main ; pdflatex main   (two passes)
+%%  Red [XXX] (\PH) marks values to fill from a re-run /
+%%  optimised back-end / new SOTA baselines.
+%% ============================================================
+\documentclass[conference]{IEEEtran}
+\IEEEoverridecommandlockouts
+\usepackage{cite}
+\usepackage{amsmath,amssymb,amsfonts}
+\usepackage{amsthm}
+\newtheorem{theorem}{Theorem}
+\newtheorem{proposition}[theorem]{Proposition}
+\usepackage{graphicx}
+\usepackage{booktabs}
+\usepackage{textcomp}
+\usepackage{xcolor}
+\usepackage{url}
+\usepackage{hyperref}
+\graphicspath{{figures/}{../figures/}}
+\newcommand{\PH}{\textcolor{red}{\textbf{[XXX]}}}
+
+\title{M-CTX: Recall-Complete Spatial Indexing for\\Context-Aware Maritime Trajectory Analytics}
+\author{\IEEEauthorblockN{Anonymous}
+\IEEEauthorblockA{Submitted to ICDE 2027}}
+
+\begin{document}
+\maketitle
+
+\input{sections/abstract}
+\input{sections/introduction}
+\input{sections/related_work}
+\input{sections/problem}
+\input{sections/system_overview}
+\input{sections/osm_index}
+\input{sections/brlz}
+\input{sections/sdf}
+\input{sections/neighbor}
+\input{sections/experiments}
+\input{sections/downstream}
+\input{sections/discussion}
+\input{sections/conclusion}
+
+\begin{thebibliography}{99}
+\bibitem{envshipbench2026} Anonymous, ``{EnvShip-Bench}: A context-aware multi-type maritime trajectory benchmark,'' companion paper, ICDE, 2026.
+\bibitem{guttman1984rtree} A.~Guttman, ``{R}-trees: A dynamic index structure for spatial searching,'' in \emph{Proc. SIGMOD}, 1984, pp. 47--57.
+\bibitem{leutenegger1997str} S.~T. Leutenegger, M.~A. L\'{o}pez, and J.~Edgington, ``{STR}: A simple and efficient algorithm for {R}-tree packing,'' in \emph{Proc. ICDE}, 1997, pp. 497--506.
+\bibitem{kraska2018case} T.~Kraska, A.~Beutel, E.~H. Chi, J.~Dean, and N.~Polyzotis, ``The case for learned index structures,'' in \emph{Proc. SIGMOD}, 2018, pp. 489--504.
+\bibitem{wang2019learnedz} H.~Wang, X.~Fu, J.~Xu, and H.~Lu, ``Learned index for spatial queries,'' in \emph{Proc. MDM}, 2019.
+\bibitem{li2020lisa} P.~Li, H.~Lu, Q.~Zheng, L.~Yang, and G.~Pan, ``{LISA}: A learned index structure for spatial data,'' in \emph{Proc. SIGMOD}, 2020.
+\bibitem{qi2020rsmi} J.~Qi, G.~Liu, C.~S. Jensen, and L.~Kulik, ``Effectively learning spatial indices,'' in \emph{Proc. VLDB}, 2020.
+\bibitem{nathan2020flood} V.~Nathan, J.~Ding, M.~Alizadeh, and T.~Kraska, ``Learning multi-dimensional indexes,'' in \emph{Proc. SIGMOD}, 2020, pp. 985--1000.
+\bibitem{gao2022lmsfc} J.~Gao, X.~Cao, X.~Yao, G.~Zhang, and W.~Wang, ``{LMSFC}: A novel multidimensional index based on learned monotonic space-filling curves,'' \emph{Proc. VLDB Endowment}, vol.~16, no.~10, pp. 2605--2617, 2023.
+\bibitem{saltenis2000tpr} S.~\v{S}altenis, C.~S. Jensen, S.~T. Leutenegger, and M.~A. L\'{o}pez, ``Indexing the positions of continuously moving objects,'' in \emph{Proc. SIGMOD}, 2000, pp. 331--342.
+\bibitem{jensen2004bx} C.~S. Jensen, D.~Lin, and B.~C. Ooi, ``Query and update efficient {B$^{+}$}-tree based indexing of moving objects,'' in \emph{Proc. VLDB}, 2004, pp. 768--779.
+\bibitem{moon2001hilbert} B.~Moon, H.~V. Jagadish, C.~Faloutsos, and J.~H. Saltz, ``Analysis of the clustering properties of the {H}ilbert space-filling curve,'' \emph{IEEE TKDE}, vol.~13, no.~1, pp. 124--141, 2001.
+\bibitem{felzenszwalb2004distance} P.~F. Felzenszwalb and D.~P. Huttenlocher, ``Distance transforms of sampled functions,'' \emph{Theory of Computing}, vol.~8, no.~1, pp. 415--428, 2012.
+\bibitem{virtanen2020scipy} P.~Virtanen et~al., ``{SciPy 1.0}: Fundamental algorithms for scientific computing in {P}ython,'' \emph{Nature Methods}, vol.~17, pp. 261--272, 2020.
+\bibitem{nguyen2018traisformer} D.~Nguyen and R.~Fablet, ``{TrAISformer}: A transformer network for vessel trajectory prediction,'' in \emph{Proc. IJCAI}, 2018.
+\bibitem{zhao2021bilstm} Y.~Zhao and J.-Y. Shi, ``Bidirectional LSTM networks for vessel trajectory prediction using AIS data,'' in \emph{Proc. OCEANS}, 2021.
+\bibitem{dma2025pilot} Danish Maritime Authority, ``Open {AIS} data pilot,'' 2025. [Online]. Available: \url{https://www.dma.dk}
+\bibitem{libspatialindex} M.~Hadjieleftheriou et~al., ``libspatialindex: An open-source {C++} spatial indexing library,'' 2024. [Online]. Available: \url{https://libspatialindex.org/}
+\bibitem{beckmann1990rstar} N.~Beckmann, H.-P. Kriegel, R.~Schneider, and B.~Seeger, ``The {R$^*$}-tree: An efficient and robust access method for points and rectangles,'' in \emph{Proc. SIGMOD}, 1990, pp. 322--331.
+\bibitem{guibas1978fractional} L.~J. Guibas and R.~Sedgewick, ``A dichromatic framework for balanced trees,'' in \emph{Proc. FOCS}, 1978, pp. 8--21.
+\bibitem{vaidya1989optimal} P.~M. Vaidya, ``An $O(n\log n)$ algorithm for the all-nearest-neighbors problem,'' \emph{Discrete \& Computational Geometry}, vol.~4, pp. 101--115, 1989.
+\end{thebibliography}
+
+\clearpage
+\appendices
+\input{sections/appendix}
+
+\end{document}

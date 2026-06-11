@@ -1,0 +1,28 @@
+# M-CTX core (open-source release)
+# Python 3.11+ required (for tomllib).
+#
+# Pin to the versions actually used in the paper; bump at your own risk.
+
+# Numerical & data
+numpy>=1.26,<2.2
+scipy>=1.13
+pandas>=2.2
+
+# Spatial libraries used by the cross-system comparison
+shapely>=2.0
+rtree>=1.3
+duckdb>=1.0
+h3>=4.0
+
+# Plotting (case-study figures + audit plots)
+matplotlib>=3.9
+pillow>=10
+
+# PDF utilities (for the audit `render_check`)
+pymupdf>=1.24
+
+# Statistical tests (paired Wilcoxon)
+# scipy already provides scipy.stats.wilcoxon
+
+# Optional: B^x-tree GPU SDF (if you want CUDA)
+# torch>=2.3+cu121      # uncomment for the GPU SDF baseline

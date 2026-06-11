@@ -1,0 +1,44 @@
+\section{Downstream Equivalence}\label{sec:downstream}
+
+Acceleration is valuable only if it preserves what the model learns. We
+establish that M-CTX is a \textbf{byte-exact} drop-in at three levels.
+
+\paragraph*{Tensor level}
+Computing SDFs through the reference \texttt{\_udist} path and the M-CTX
+linear-time path in float32 yields a mean absolute element-wise difference
+of $0.000$\,m across the $128\!\times\!128\!\times\!2$ tensor. Diffed
+against the as-stored float16 raster the residual is $0.089$\,m, and
+collapses to $0.000$\,m once both sides are quantised to float16,
+confirming the residual is storage quantisation, not algorithmic
+divergence. Every retrieved OSM and neighbour identifier set matches the
+oracle at recall $1.000$.
+
+\paragraph*{Model level}
+On the full $15\,000$-sample test set, substituting M-CTX reproduces the
+published ADE/FDE to the fifth decimal ($85.8271$/$211.1504$\,m) with
+per-step prediction MAE exactly $0$. Across four pretrained EnvShip
+checkpoints (Table~\ref{tab:multi-model}) every model produces
+\emph{byte-identical} predictions. M-CTX is a verified drop-in across the
+full LSTM+Env-SDF family, so its orders-of-magnitude acceleration carries
+\emph{zero} accuracy cost---the precondition a production pipeline imposes
+before adopting a new context backend.
+
+\begin{table}[t]
+\centering
+\caption{Downstream equivalence across four pretrained checkpoints
+($n{=}2\,000$ test samples). Every model is byte-identical under M-CTX
+context.}\label{tab:multi-model}
+\small
+\setlength{\tabcolsep}{4pt}
+\begin{tabular}{lrrrr}
+\toprule
+Model & ADE base (m) & ADE M-CTX (m) & $\Delta$ADE (m) & pred MAE (m)\\
+\midrule
+LSTM+SDF          & $76.7165$ & $76.7165$ & $0$ & $0$ \\
+LSTM+spatial-attn & $78.2553$ & $78.2553$ & $0$ & $0$ \\
+LSTM+binary-attn  & $94.5108$ & $94.5108$ & $0$ & $0$ \\
+LSTM+social       & $77.0156$ & $77.0156$ & $0$ & $0$ \\
+\bottomrule
+\end{tabular}
+\setlength{\tabcolsep}{6pt}
+\end{table}

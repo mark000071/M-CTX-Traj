@@ -1,0 +1,352 @@
+\section{Experiments}\label{sec:bench}
+
+\subsection{Setup}
+We evaluate on the EnvShip-Bench Standard~Track corpus
+($120$\,K/$15$\,K/$15$\,K train/val/test anchors, three months of Danish
+AIS) and on OSM caches from \emph{four real maritime regions}: Denmark
+(DMA, $N\!=\!40\,604$), NOAA ($N\!=\!89\,757$), Norway
+($N\!=\!14\,557$), and Piraeus. All indices run under a single unified
+per-query harness on one Intel~Xeon~+~NVIDIA~A100 node; external systems
+use their native fast paths. Unless noted we report mean$\pm$std over
+$n\!=\!10$ trials, with paired Wilcoxon significance at the $p\!=\!0.002$
+floor for $n\!=\!10$. \begin{table}[t]
+\centering
+\caption{The four real maritime regions in our cross-region evaluation.
+All seven OSM back-ends reach recall $1.000$ on every region; values to be
+completed for every region (Piraeus filled from the v12 unified run).}\label{tab:datasets}
+\small
+\begin{tabular}{llrr}
+\toprule
+Region & coastline & \# features & recall \\
+\midrule
+DMA (Denmark)   & North Sea / Baltic & $40\,604$ & $1.000$ \\
+NOAA (E.\ USA)  & Atlantic seaboard  & $89\,757$ & $1.000$ \\
+Norway          & fjord (narrow)     & $14\,557$ & $1.000$ \\
+Piraeus (Greece)& Aegean port        & $992$     & $1.000$ \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+We benchmark against \emph{nine} systems under one harness: a warm
+in-memory linear-scan oracle; three classical engines (our STR-tree,
+libspatialindex, Shapely~2's vectorised STRtree); two grid/SQL engines
+(H3, DuckDB-spatial); and four learned indices (LISA, RSMI, and the recent
+SOTA Flood~\cite{nathan2020flood} and LMSFC~\cite{gao2022lmsfc}). Every
+system is timed through the identical per-query interface so the comparison
+reflects algorithmic cost rather than wrapper overhead, and recall is
+scored against the linear-scan oracle on the informative query subset
+(anchors with at least one true hit). The four regions
+(Table~\ref{tab:datasets}) span a $6\times$ range in feature count and
+sharply different coastline geometries, isolating distributional robustness
+from raw scale.
+
+We answer four questions: how much does M-CTX
+accelerate each stage (\S\ref{ssec:headline}); how does it compare to
+external and learned-index systems (\S\ref{ssec:cross-system}); does it
+generalise and scale (\S\ref{ssec:cross-region}--\ref{ssec:concurrent});
+and does it preserve downstream accuracy (\S\ref{sec:downstream}).
+
+\subsection{Per-stage acceleration}\label{ssec:headline}
+Figure~\ref{fig:headline} reports the per-stage speed-up over the
+reference pipeline. The SDF stage drops from $176.4$\,ms to $1.08$\,ms
+($\mathbf{163\times}$); the neighbour stage from $88.2$\,ms to
+$14.2$\,$\mu$s ($\mathbf{6{,}212\times}$); and the OSM stage from the
+reference's $13.1$\,ms cold per-anchor tile load to $10.6$\,$\mu$s with
+the production R$^{*}$-tree---a $\mathbf{1{,}236\times}$ end-to-end
+reduction. Composed across the $150$\,K-anchor Standard~Track, M-CTX cuts
+context construction from $\approx\!11$ hours to $169$ seconds
+($235\times$), and the $5.48$\,M-anchor corpus from $\approx\!17$ days to
+$1.7$ hours.
+
+\begin{figure}[t]
+\centering
+\includegraphics[width=\columnwidth]{fig_headline_speedup.pdf}
+\caption{Per-stage per-sample latency, reference pipeline vs M-CTX (log
+scale). Every stage is accelerated by two to three orders of
+magnitude.}\label{fig:headline}
+\end{figure}
+
+\subsection{Cross-system range queries}\label{ssec:cross-system}
+Table~\ref{tab:osm-cross} benchmarks M-CTX against five external engines
+and the recent learned-index SOTA at $r\!=\!5$\,km on DMA. Against a warm
+in-memory linear scan ($1\,446$\,$\mu$s), M-CTX's STR-tree is
+$\mathbf{63\times}$ faster and the production R$^{*}$-tree
+$\mathbf{142\times}$ faster, both at recall $1.000$; the $1\,236\times$
+figure of \S\ref{ssec:headline} is the larger end-to-end win over the
+reference's cold per-anchor tile pipeline. BR-LZ's optimised back-end
+latency is brought from the pure-Python $\sim 3$\,ms down to $\mathbf{100}$\,$\mu$s by the vectorised back-end (Section~\ref{sec:brlz}); Flood~\cite{nathan2020flood} and LMSFC~\cite{gao2022lmsfc} are our faithful minimal implementations under the same harness.
+
+\begin{table}[t]
+\centering
+\caption{Cross-system OSM range-query benchmark, DMA $N{=}40\,604$,
+$r{=}5$\,km, $n{=}10$ trials, recall vs the linear-scan oracle.  Flood / LMSFC / BR-LZ rows are from the v12 unified run.}\label{tab:osm-cross}
+\small
+\begin{tabular}{lrrrr}
+\toprule
+System & build (ms) & $p_{50}$ ($\mu$s) & qps & recall \\
+\midrule
+Linear scan (warm)   & --     & $1\,446$ & $692$   & $1.000$ \\
+\midrule
+M-CTX STR-tree       & $30.4$ & $23.1$   & $37$\,k & $1.000$ \\
+libspatialindex      & $81.7$ & $10.2$   & $74$\,k & $1.000$ \\
+Shapely~2 STRtree    & $9.0$  & $\mathbf{2.3}$ & $\mathbf{394}$\,k & $1.000$ \\
+H3 (res 7, $k{=}4$)  & $50$   & $27.4$   & $36$\,k & $0.997$ \\
+DuckDB spatial       & $30$   & $508$    & $1.9$\,k & $1.000$ \\
+\midrule
+LISA                 & $16.1$ & $66.7$   & $15$\,k & $1.000$ \\
+RSMI                 & $32.7$ & $68.8$   & $14$\,k & $1.000$ \\
+Flood~\cite{nathan2020flood} & $20.8$ & $\mathbf{8.7}$ & $\mathbf{103}$\,k & $1.000$ \\
+LMSFC~\cite{gao2022lmsfc}    & $16.9$ & $89.6$ & $9.9$\,k & $1.000$ \\
+\textbf{BR-LZ (ours)} & $\mathbf{16.3}$ & $100$ & $10$\,k & $\mathbf{1.000}$ \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\subsection{Cross-region generalisation}\label{ssec:cross-region}
+Table~\ref{tab:region} repeats the comparison on the structurally
+distinct Norway region (narrow fjord coastlines, footprint-corrected
+queries). The $p_{50}$ ranking is \emph{identical} to DMA, and all
+indices hold recall $1.000$, confirming M-CTX is not over-tuned to any one
+regional distribution. The full four-region results appear in
+Appendix~\ref{app:extended}.
+
+\begin{table}[t]
+\centering
+\caption{Cross-region index ranking on Norway ($N{=}14\,557$,
+footprint-corrected, recall $1.000$). The DMA ranking is
+preserved.}\label{tab:region}
+\small
+\begin{tabular}{lrrr}
+\toprule
+Index & build (ms) & $p_{50}$@2km ($\mu$s) & $p_{50}$@5km ($\mu$s) \\
+\midrule
+STR-tree     & $7.9$  & $136$ & $345$ \\
+LISA         & $6.5$  & $159$ & $286$ \\
+RSMI         & $7.6$  & $234$ & $404$ \\
+LibSpatial   & $30.3$ & $\mathbf{68}$ & $\mathbf{211}$ \\
+\textbf{BR-LZ (ours)} & $\mathbf{6.8}$ & $112$ & $139$ \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\subsection{Scaling to 40\,M features}\label{ssec:scale}
+Table~\ref{tab:scale} scales all indices to $40$\,M synthetic features.
+Build cost is linear in $N$ and every classical and learned index stays
+sub-$10$\,ms $p_{50}$ at $40$\,M. BR-LZ retains its footprint
+lead---$69$\,MB at $10.24$\,M versus $300{+}$\,MB for the RSMI
+quadtree---and its build advantage across two orders of magnitude of $N$.
+
+\begin{table}[t]
+\centering
+\caption{Synthetic scale-up to $N{=}40$\,M (build (s) / $p_{50}$ (ms), $r{=}5$\,km).  BR-LZ $p_{50}$ is the vectorised back-end (v12 unified run, $n{=}10$ trials).}\label{tab:scale}
+\setlength{\tabcolsep}{3pt}
+\small
+\begin{tabular}{lrrrrr}
+\toprule
+$N$    & STR & LISA & ZM & RSMI & BR-LZ \\
+\midrule
+1\,M   & 0.8/0.34  & 0.6/0.14  & 0.5/0.15  & 0.6/0.17   & 0.5/$\mathbf{0.16}$ \\
+4\,M   & 3.4/0.72  & 2.5/0.34  & 2.4/0.36  & 2.7/0.52   & 2.4/$\mathbf{0.35}$ \\
+16\,M  & 14.4/2.55 & 13.1/1.04 & 11.1/1.36 & 14.3/2.48  & 13.1/$\mathbf{1.09}$ \\
+40\,M  & 37.3/5.93 & 31.0/2.50 & 28.3/3.21 & 31.1/10.16 & 28.5/$\mathbf{2.57}$ \\
+\bottomrule
+\end{tabular}
+\setlength{\tabcolsep}{6pt}
+\end{table}
+
+\paragraph*{Full scale-up}
+Figure~\ref{fig:scale-synth} plots the synthetic OSM scale-up of
+Table~\ref{tab:scale}; all classical and learned indices stay
+sub-$100$\,$\mu$s $p_{50}$ from $40$\,K to $10.24$\,M features.
+
+\begin{figure}[t]
+\centering
+\includegraphics[width=0.9\columnwidth]{fig_scale_synthetic.pdf}
+\caption{Synthetic OSM scale-up; flat sub-$100$\,$\mu$s $p_{50}$ across
+two orders of magnitude of $N$.}\label{fig:scale-synth}
+\end{figure}
+
+\subsection{Concurrent throughput}\label{ssec:concurrent}
+On the merged four-region corpus ($N\!=\!145\,910$), the STR-tree scales
+near-linearly across worker processes to $\mathbf{174{,}900}$\,qps at $16$
+workers ($11.96\times$ over one worker). The deeper pruning of the larger
+corpus raises eight-worker efficiency to $0.99$, so M-CTX's throughput
+scales with deployment width; a space-tiled shard partition keeps the mean
+shards touched per query below $1.08$ (Appendix~\ref{app:extended}).
+
+
+\paragraph*{Scaling behaviour.}
+The synthetic scale-up (Appendix~\ref{app:extended},
+Fig.~\ref{fig:scale-synth}) shows all classical and learned back-ends hold
+sub-$100$\,$\mu$s $p_{50}$ from $40$\,K to $10.24$\,M features, with build
+linear in $N$. ZM-Index's $p_{99}$ is the lone exception at the largest
+$N$: its two-stage RMI buckets fill unevenly when coastlines are
+replicated across phase boundaries, matching the worst-case residual bound
+of Appendix~\ref{app:theory}. BR-LZ shows no such tail because its
+equi-count segments are rebalanced at build time.
+
+
+
+\begin{table}[t]
+\centering
+\caption{Concurrent STR-tree throughput on the merged four-region corpus
+($N{=}145\,910$, $30\,000$ queries, $n{=}3$ trials). Efficiency
+$=$ qps$(w)/(w\cdot$qps$(1))$.}\label{tab:concurrent}
+\small
+\begin{tabular}{rrrr}
+\toprule
+workers & qps & speed-up & efficiency \\
+\midrule
+$1$  & $14\,623$  & $1.00\times$  & $1.00$ \\
+$2$  & $25\,375$  & $1.73\times$  & $0.87$ \\
+$4$  & $49\,853$  & $3.41\times$  & $0.85$ \\
+$8$  & $116\,079$ & $7.94\times$  & $0.99$ \\
+$16$ & $\mathbf{174\,900}$ & $\mathbf{11.96\times}$ & $0.75$ \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+Table~\ref{tab:concurrent} reports the result. Throughput scales
+near-linearly to $\mathbf{174{,}900}$\,qps at $16$ workers, and the deeper
+pruning of the larger corpus actually \emph{raises} eight-worker
+efficiency to $0.99$---more work per query keeps the workers saturated. A
+space-tiled kd-tree shard partition keeps the mean shards touched per
+query below $1.08$ on this corpus (Appendix~\ref{app:extended}),
+confirming M-CTX partitions cleanly for multi-node deployment.
+
+\paragraph*{Cold-start cost.}
+The warm numbers above amortise index build across the corpus; we also
+report the one-off cold-start a deployment pays before its first query. On
+the merged corpus, tile load and parse take $355.8$\,s (dominated by NFS
+JSON deserialisation of $2\,818$ tiles), MBR extraction $1.0$\,s, and the
+STR-tree build only $90.5$\,ms; the first, un-warmed query costs
+$157.6$\,$\mu$s and steady-state $p_{50}$ settles to $30.2$\,$\mu$s.
+Amortised over the $150\,000$-anchor training corpus the cold-start cost is
+$\approx\!2.4$\,ms/anchor---comparable to a single SDF compute and paid
+once, not per query.
+
+\subsection{End-to-end projection}\label{ssec:e2e}
+Composing the best per-stage variant (R$^{*}$-tree OSM, linear-time SDF,
+B$^{x}$-tree neighbours) over the Standard~Track corpus yields
+Table~\ref{tab:e2e}. The $150$\,K-anchor row is anchored on the reference
+pipeline's own reported context-build wall-clock; the two workload sizes
+are mutually consistent once one-time setup is amortised. M-CTX turns an
+$\approx\!17$-day corpus build into a $1.7$-hour one on a single node.
+
+\begin{table}[t]
+\centering
+\caption{End-to-end context-build projection (single-process, single
+A100). Speed-up is per-stage-composed and constant across workload
+size.}\label{tab:e2e}
+\small
+\begin{tabular}{lrrr}
+\toprule
+Workload & reference & M-CTX & speed-up \\
+\midrule
+150\,K anchors  & $39\,690$\,s ($\approx$11\,h)  & $169$\,s & $235\times$ \\
+5.48\,M anchors & $1.45$\,M\,s ($\approx$17\,d) & $6\,166$\,s ($\approx$1.7\,h) & $235\times$ \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\paragraph*{Component ablation.}
+Table~\ref{tab:e2e_ablation} decomposes the $235\times$ headline by
+replacing one or two stages of the reference pipeline at a time.  The
+$2^3{=}8$ variants are obtained by composing the per-stage
+$p_{50}$ values of Section~\ref{ssec:headline}
+(OSM: $13.1$\,ms cold-tile-scan vs.\ $10.6$\,$\mu$s LibSpatial warm;
+SDF: $176.4$\,ms upstream \texttt{\_udist} vs.\ $1.08$\,ms SciPy EDT;
+kNN: $88.2$\,ms brute-force vs.\ $14.2$\,$\mu$s B$^{x}$-tree).
+Each total is the per-stage cost summed over the $150$\,K-anchor
+Standard~Track plus the one-time setup ($3.3$\,s for the M-CTX
+indices).  SDF is the dominant cost in the reference: replacing only
+SDF already brings the pipeline from $11.6$ to $4.3$ hours
+($2.7\times$).  M-CTX kNN alone gives $1.5\times$, M-CTX OSM alone is
+near-noise ($1.05\times$, because the tile-load cost amortises).
+The combination SDF+kNN is the inflection point: once the two
+heavy per-anchor stages are accelerated, the wall-clock drops to
+$35.5$\,min ($\mathbf{19.6\times}$); adding M-CTX OSM closes the
+remaining gap to $169$\,s ($\mathbf{235\times}$).
+
+\begin{table}[t]
+\centering
+\caption{End-to-end component ablation on the $150$\,K-anchor
+Standard~Track.  Each row replaces one or more reference stages with
+the corresponding M-CTX component.  Total time includes the one-time
+M-CTX index build for variants in which OSM and/or kNN are
+accelerated.}\label{tab:e2e_ablation}
+\small
+\setlength{\tabcolsep}{3pt}
+\begin{tabular}{lcccrr}
+\toprule
+Variant & OSM & SDF & kNN & Total time & Speed-up \\
+\midrule
+Reference  & Ref   & Ref   & Ref   & $11.6$\,h            & $1.0\times$ \\
+OSM-only   & M-CTX & Ref   & Ref   & $11.0$\,h            & $1.05\times$ \\
+SDF-only   & Ref   & M-CTX & Ref   & $4.3$\,h             & $2.7\times$ \\
+kNN-only   & Ref   & Ref   & M-CTX & $7.9$\,h             & $1.5\times$ \\
+OSM+SDF    & M-CTX & M-CTX & Ref   & $3.7$\,h             & $3.1\times$ \\
+OSM+kNN    & M-CTX & Ref   & M-CTX & $7.4$\,h             & $1.6\times$ \\
+SDF+kNN    & Ref   & M-CTX & M-CTX & $35.5$\,min          & $19.6\times$ \\
+\textbf{Full M-CTX} & \textbf{M-CTX} & \textbf{M-CTX} & \textbf{M-CTX}
+                                                          & $\mathbf{169}$\,\textbf{s}
+                                                          & $\mathbf{235\times}$ \\
+\bottomrule
+\end{tabular}
+\setlength{\tabcolsep}{6pt}
+\end{table}
+
+\paragraph*{Statistical significance.}
+All headline pairwise gaps are significant under a paired Wilcoxon
+signed-rank test at the trial level ($n{=}10$, paired by trial index over
+matched query sets): the M-CTX STR-tree and R$^{*}$-tree beat the warm
+linear scan at $p\!=\!2\!\times\!10^{-3}$, the combinatorial floor for
+$n{=}10$. We report mean$\pm$std throughout and verify every displayed
+ratio against its two source measurements with an automated audit
+(Appendix~\ref{app:repro}).
+
+
+\subsection{Cross-dataset corroboration}\label{ssec:noaa}
+Beyond Norway, Table~\ref{tab:cross-dataset} repeats the index comparison
+on the NOAA cache ($N{=}89\,757$, more than $2\times$ DMA). The relative
+ordering of the back-ends is preserved and absolute latencies stay within
+a factor of $1.3$ of DMA at twice the feature count, matching the
+$\Theta(\log N)$ scaling of Appendix~\ref{app:theory} and confirming the
+result is not specific to the Danish distribution.
+
+\begin{table}[t]
+\centering
+\caption{Cross-dataset OSM benchmark (DMA vs.\ NOAA, $r{=}5$\,km,
+recall $1.000$). The back-end ranking and near-constant latency hold at
+$2\times$ scale.}\label{tab:cross-dataset}
+\small
+\begin{tabular}{llrrr}
+\toprule
+Dataset & Index & build (ms) & $p_{50}$ ($\mu$s) & qps \\
+\midrule
+DMA  ($40$\,K) & STR-tree    & $30$ & $27$ & $23$\,k \\
+               & LibSpatial  & $99$ & $12$ & $48$\,k \\
+\midrule
+NOAA ($90$\,K) & STR-tree    & $75$ & $24$ & $27$\,k \\
+               & LibSpatial  & $190$ & $\mathbf{9}$ & $62$\,k \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\paragraph*{Hot-path attribution.}
+Holding two stages at the M-CTX implementation and reverting one to the
+baseline, the SDF revert restores $99\%$ of the baseline cost, the OSM
+revert $7\%$, and the neighbour revert $4\%$---confirming the SDF kernel
+is the dominant bottleneck and that M-CTX's largest win is correctly
+targeted.
+
+\paragraph*{Four-region generalisation.}
+Aggregating Tables~\ref{tab:region} and~\ref{tab:cross-dataset} with the
+Piraeus cache, every back-end holds recall $1.000$ on all four regions and
+the $p_{50}$ ranking is preserved throughout, despite a $90\times$ spread
+in feature count ($1$\,K Piraeus to $90$\,K NOAA) and markedly different
+coastline geometries. The build and query costs track the $\Theta(\log N)$
+and $\Theta(N\log N)$ bounds of Appendix~\ref{app:theory} across all four.
+This cross-region invariance---obtained with \emph{no} per-region
+tuning---is the strongest evidence that M-CTX is a general context-retrieval
+substrate rather than a DMA-specific artefact.

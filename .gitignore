@@ -1,0 +1,46 @@
+# --- Python ---
+__pycache__/
+*.py[cod]
+*$py.class
+.venv/
+venv/
+env/
+*.egg-info/
+build/
+dist/
+.pytest_cache/
+.mypy_cache/
+
+# --- LaTeX ---
+paper/*.aux
+paper/*.log
+paper/*.out
+paper/*.toc
+paper/*.bbl
+paper/*.blg
+paper/*.synctex.gz
+paper/*.fdb_latexmk
+paper/*.fls
+paper/*.pdf       # un-comment to commit the built PDF; we ship one for reference
+paper/_minted-*
+!paper/main.pdf
+
+# --- Experiment outputs (kept out of git; reproduce locally) ---
+experiments/runs/
+data/
+logs/
+.stage_markers/
+
+# --- Config (machine-local) ---
+mctx.config.toml
+.env
+.envrc
+
+# --- IDE ---
+.idea/
+.vscode/
+*.swp
+
+# --- OS ---
+.DS_Store
+Thumbs.db

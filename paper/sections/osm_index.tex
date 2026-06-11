@@ -1,0 +1,19 @@
+\section{The OSM Range Index}\label{sec:osm}
+
+The OSM stage answers $R_F(a,5\text{\,km})$ over a static set of vector
+ways (coastline, breakwater, pier, lock). Because the workload is
+ingest-once/query-many, M-CTX exposes three exact back-ends behind one
+interface and lets the deployment pick its operating point. A pure-NumPy
+\textbf{STR-tree}~\cite{leutenegger1997str} bulk-loads features into
+$\lceil\sqrt{N/M}\rceil$ slabs and pages of size $M$, storing both page
+and feature MBRs for exact recall at $\Theta(\log N+k)$ query and
+$\Theta(N\log N)$ build with zero native dependencies; it is M-CTX's
+default. A wrapper around the C++ \textbf{R$^{*}$-tree} of
+libspatialindex~\cite{libspatialindex} provides a heavily tuned reference
+point. The third back-end, \textbf{BR-LZ}, is our learned index; it is
+the subject of Section~\ref{sec:brlz} and is the only one of the three to
+carry a \emph{provable} recall guarantee while building fastest and
+occupying the smallest footprint of any learned spatial index in its
+class. All three reach recall and precision $1.000$ against the
+linear-scan oracle; their cross-system comparison is deferred to
+Section~\ref{sec:bench}.

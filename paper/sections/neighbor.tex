@@ -1,0 +1,109 @@
+\section{The Streaming Neighbour Index}\label{sec:neighbor}
+
+The neighbour stage answers $K_S(a,3\text{\,km},k)$ per anchor. The
+reference pipeline rescans the full snapshot ($88.2$\,ms/anchor); M-CTX
+replaces it with an incremental B$^{x}$-tree~\cite{jensen2004bx},
+collapsing the stage to a $14.2$\,$\mu$s query---a
+$\mathbf{6{,}212\times}$ speed-up. Each record maps to a single key
+$k(t,x,y)=\mathrm{phase}_i\,\Vert\,\operatorname{Morton}_B(x,y)$ with
+$\mathrm{phase}_i=\lfloor t/T\rfloor$; a query maps its bbox to a key
+interval, scans the slice, and applies an exact radius filter that
+guarantees recall $1.000$. Inserts are $O(\log N)$ and trigger no
+rebuild---a new phase simply occupies a higher key byte---which is
+precisely the property a live feed requires. Against a per-timestamp
+KD-tree rebuild the B$^{x}$-tree matches query latency
+($18$--$22$\,$\mu$s) while strictly improving recall (the KD-tree's
+\texttt{distance\_upper\_bound} convention drops boundary records to
+$0.980$--$0.992$), and it is the only option when queries and inserts
+interleave at sub-snapshot granularity.
+
+\begin{table}[t]
+\centering
+\caption{B$^{x}$-tree streaming ingest. Top: $10^{7}$ synthetic records
+under four arrival patterns. Bottom: real AIS streams per region and
+merged. Recall $1.000$ throughout.}\label{tab:stream}
+\small
+\begin{tabular}{lrrr}
+\toprule
+stream & rate (rec/s) & insert ($\mu$s) & $q_{p50}$ (ms)\\
+\midrule
+synthetic, batch        & $131\,283$ & $9.91$  & $0.09$ \\
+synthetic, per-record   & $127\,583$ & $10.62$ & $0.11$ \\
+synthetic, bursty       & $117\,862$ & $11.57$ & $0.13$ \\
+synthetic, out-of-order & $117\,395$ & $12.10$ & $0.13$ \\
+\midrule
+real DMA                & $214\,274$ & --      & $0.02$ \\
+real NOAA               & $272\,502$ & --      & $0.02$ \\
+real Norway             & $238\,424$ & --      & $0.02$ \\
+real Piraeus            & $243\,295$ & --      & $0.02$ \\
+\textbf{real merged-4}  & $\mathbf{253\,574}$ & -- & $0.03$ \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\begin{figure}[t]
+\centering
+\includegraphics[width=0.9\columnwidth]{fig_streaming_10M.pdf}
+\caption{Sustained ingest rate and query $p_{50}$ across four
+$10^{7}$-record arrival patterns; both stay flat, confirming the update
+path is robust to arrival order.}\label{fig:streaming}
+\end{figure}
+
+
+
+\begin{figure}[t]
+\centering
+\includegraphics[width=\columnwidth]{fig_neighbor_scaling.pdf}
+\caption{Neighbour index at scale. Left: $p_{50}$ query latency stays
+flat at $18$--$22$\,$\mu$s across anchor count. Right: insert throughput;
+the KD-tree bulk-loads per snapshot, the B$^{x}$-tree inserts per record,
+which is the regime that matters for a live feed.}\label{fig:nbr-scale}
+\end{figure}
+
+Figure~\ref{fig:nbr-scale} sweeps $N\!\in\![500,10\,000]$ anchors,
+$r\!\in\!\{1,3,5\}$\,km, and $k\!\in\!\{5,10,20\}$: query latency is flat
+in $N$ for both indices, isolating update granularity---not query
+cost---as the discriminator.
+
+
+We isolate the genuine B$^{x}$-tree advantage from baseline artefacts with
+a \emph{fair} KD-tree that projects each query into its own local-ENU
+frame, removing the fixed-reference-latitude bias. Both indices then reach
+high recall, and the contest reduces to update granularity
+(Table~\ref{tab:fair-stream}): the KD-tree's per-record amortised insert is
+an order of magnitude cheaper because $n$ records share one rebuild per
+snapshot, but it cannot answer a query \emph{between} snapshots. The
+B$^{x}$-tree is the only index that supports sub-snapshot interleaving of
+queries and inserts---the operating mode of a live feed---while holding
+exact recall via its per-record radius filter.
+
+\begin{table}[t]
+\centering
+\caption{Fair streaming-replay comparison ($50\,000$ records, $686$
+snapshots, $n{=}3$ trials). Per-query Haversine projection for both, so
+recall is comparable.}\label{tab:fair-stream}
+\small
+\begin{tabular}{lrr}
+\toprule
+Metric & FairKDTree (rebuild) & B$^{x}$-tree (incremental) \\
+\midrule
+recall vs.\ oracle  & $0.980\pm0.000$ & $\mathbf{1.000\pm0.000}$ \\
+insert ($\mu$s/rec) & $\mathbf{0.48\pm0.02}$ & $4.68\pm0.16$ \\
+sub-snapshot query  & no & \textbf{yes} \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+The B$^{x}$-tree is robust to its hyper-parameters: phase length
+$T\!\in\![10,60]$\,s changes build time by $<\!10\%$ and query latency by
+$<\!4\%$ (Appendix~\ref{app:extended}), so we default to $T\!=\!20$\,s
+(matching the AIS cadence) and a $16$-bit grid.
+
+
+Table~\ref{tab:stream} stresses a single B$^{x}$-tree with $10^{7}$
+synthetic records under four arrival patterns and with the real AIS
+streams of all four regions. Throughput holds at $117$--$272$\,K
+records/s at recall $1.000$ and $q_{p50}\!\le\!0.13$\,ms throughout, with
+resident memory bounded by phase eviction below the rolling window
+(Fig.~\ref{fig:streaming}). The index sustains continental-scale ingest
+without degradation, which the brute-force scan cannot.

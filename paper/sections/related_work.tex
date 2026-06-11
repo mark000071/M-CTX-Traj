@@ -1,0 +1,65 @@
+\section{Related Work}\label{sec:related}
+
+\paragraph*{Classical spatial indexing}
+The R-tree~\cite{guttman1984rtree} and its variants are the canonical
+disk-resident spatial indices. For static, read-dominated workloads,
+bulk-loading dominates query performance: the Sort-Tile-Recursive (STR)
+algorithm~\cite{leutenegger1997str} achieves near-optimal MBR overlap and
+underpins PostGIS and Boost.Geometry. M-CTX adopts STR as a strong,
+exact, dependency-free baseline.
+
+\paragraph*{Learned spatial indexing}
+Following the learned-index paradigm~\cite{kraska2018case}, two-dimensional
+methods either project onto a space-filling curve and learn a 1-D
+CDF~\cite{wang2019learnedz}, partition space with per-cell models
+(LISA~\cite{li2020lisa}), recursively partition with per-leaf models
+(RSMI~\cite{qi2020rsmi}), or learn the data layout and partitioning
+directly (Flood~\cite{nathan2020flood}, LMSFC~\cite{gao2022lmsfc}). A
+recurring but under-examined issue for \emph{range} queries is the
+\textbf{centroid-versus-MBR-overlap recall gap}: indexing centroids on a
+curve silently drops features whose MBR overlaps the query but whose
+centroid does not. Existing one-curve methods close this gap only by an
+\emph{ad hoc} global expansion, with no correctness proof and a loose
+candidate set. BR-LZ (Section~\ref{sec:brlz}) is, to our knowledge, the
+first one-curve learned spatial index to close it with a \emph{proof} of
+recall completeness and a provably tighter segment-local expansion.
+
+\paragraph*{Moving-object indexing}
+The TPR-tree~\cite{saltenis2000tpr} indexes time-parameterised MBRs;
+the B$^{x}$-tree~\cite{jensen2004bx} encodes time-projected positions on a
+space-filling curve and indexes them with a plain B$^{+}$-tree, avoiding
+costly node updates. Its phase structure matches the AIS $20$\,s cadence
+and supports $O(\log N)$ incremental inserts---essential for a feed
+ingesting $\sim\!10^{6}$ updates per minute---making it the natural fit
+for the neighbour stage~\cite{moon2001hilbert}.
+
+\paragraph*{Distance transforms and geospatial systems}
+The Felzenszwalb--Huttenlocher transform~\cite{felzenszwalb2004distance}
+computes the exact Euclidean distance transform in linear time via
+separable parabolic-envelope passes~\cite{virtanen2020scipy}; the
+reference pipeline instead ships a quadratic kernel. General geospatial
+engines (PostGIS, GeoMesa) target out-of-core, multi-tenant serving;
+M-CTX targets the orthogonal operating point of a single-process,
+in-memory accelerator embedded in the training loop, where amortised
+per-anchor latency at corpus scale is what matters.
+
+\paragraph*{Context-aware maritime prediction}
+EnvShip-Bench~\cite{envshipbench2026} crystallised the environmental and
+social context representations we accelerate; earlier work treated AIS as
+a trajectory-only signal~\cite{nguyen2018traisformer,zhao2021bilstm} over
+raw windows without aligned context~\cite{dma2025pilot}. M-CTX is
+orthogonal: it accelerates the context pipeline these methods depend on,
+leaving the models and the benchmark unchanged.
+
+\noindent The distinction we draw is sharper than ``learned vs.\
+classical.'' Classical structures (R-tree, STR) are exact by
+construction; existing learned spatial indices trade that exactness for a
+model and recover high recall only empirically, by tuning to a fixed data
+distribution. For a retrieval workload feeding a model---where a silently
+dropped feature corrupts the training signal---this is the wrong trade. We
+therefore ask whether a learned index can retain the build-time and
+footprint advantages of the learned paradigm while restoring the
+\emph{provable} exactness of the classical one. BR-LZ answers
+affirmatively, and Section~\ref{ssec:extent} shows it does so with a
+tighter candidate set than the only alternative (a global expansion) that
+makes prior learned indices recall-complete.

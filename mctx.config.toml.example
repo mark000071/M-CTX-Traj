@@ -1,0 +1,17 @@
+# Example M-CTX configuration file.
+# Copy to `mctx.config.toml` (not gitignored — but you can also use env vars).
+
+[paths]
+DMA      = "/data/EnvShipBench/DMA/standard_track_v1/context_v1"
+NOAA     = "/data/EnvShipBench/NOAA/standard_track_v1/context_v1"
+Norway   = "/data/EnvShipBench/Norway/standard_track_v1/context_v1"
+Piraeus  = "/data/EnvShipBench/Piraeus/standard_track_v1/context_v1"
+
+# Path to the EnvShip-Bench `build/` directory that exports
+# `_parse_ways`, `_udist`, `_signed_dist`, etc.
+UPSTREAM_BUILD = "/data/EnvShipBench/build"
+
+[bench]
+# default radius and trial count for the unified harness
+radius_m = 5000
+n_trials = 10

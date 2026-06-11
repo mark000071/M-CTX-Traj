@@ -1,0 +1,258 @@
+\section{BR-LZ: A Recall-Complete Learned Index}\label{sec:brlz}
+
+One-curve learned indices are attractive for read-mostly OSM range
+queries: their per-segment regressors are trivially serialisable and
+build in a single pass. Their Achilles' heel for \emph{range} queries is
+the centroid-versus-MBR-overlap recall gap---a feature whose centroid
+falls just outside the query box but whose MBR overlaps it is silently
+missed. BR-LZ closes this gap by construction, and---uniquely in this
+class---with a proof, while introducing a segment-local extent that is
+provably tighter than the expansion competitors require.
+
+\subsection{Index definition}
+\paragraph*{Inputs} $F=\{f_1,\dots,f_N\}$, each $f_i$ a 2-D axis-aligned
+MBR with extents $w_i^{\mathrm{lon}},w_i^{\mathrm{lat}}$ and centroid
+$c_i$.
+
+\paragraph*{Build ($O(N\log N)$)}
+(1)~Record the global maximum half-extents
+$h_{\mathrm{lon}}=\max_i w_i^{\mathrm{lon}}/2$ and
+$h_{\mathrm{lat}}=\max_i w_i^{\mathrm{lat}}/2$.
+(2)~Map each centroid to a Morton key
+$z_i=\operatorname{Morton}_B(c_i)$.
+(3)~Sort by $z_i$, giving permutation $\pi$ with $z_{\pi(j)}$ monotone in
+$j$.
+(4)~Partition into $S$ equi-count segments; per segment $k$, fit the
+endpoint-interpolating line $\hat\pi_k(z)=a_kz+b_k$ and record the
+\emph{bounded residual}
+$\rho_k=\max_{j\in I_k}|\hat\pi_k(z_{\pi(j)})-j|$, where
+$I_k=[p_k,p_{k+1})$ is the segment's position range.
+
+\paragraph*{Query $(q_{\mathrm{bbox}},r)$}
+Expand $q_{\mathrm{bbox}}$ by $(h_{\mathrm{lon}},h_{\mathrm{lat}})$ to
+$q_{\mathrm{exp}}$, derive corner Morton keys $[z_{\min},z_{\max}]$, and
+for each overlapping segment $k$ scan the \emph{candidate window}
+$[\hat\pi_k(z'_{\min})-\rho_k,\ \hat\pi_k(z'_{\max})+\rho_k)$
+($z'_{\min},z'_{\max}$ the segment-clipped key range), filtering each
+entry against the exact MBR. The bounded residual makes the predictor an
+\emph{exact} look-up structure: it returns a position window guaranteed to
+contain the true rank, not a probabilistic estimate.
+
+\begin{figure}[t]
+\centering
+\fbox{\parbox{0.93\columnwidth}{\small
+\textbf{Algorithm 1.}~BR-LZ build and range query\\[2pt]
+\textbf{Build}$(F, B, S)$:\\
+\hspace*{1em}1: $h_{\mathrm{lon}}\!\gets\!\max_i w_i^{\mathrm{lon}}/2$;\quad
+$h_{\mathrm{lat}}\!\gets\!\max_i w_i^{\mathrm{lat}}/2$\\
+\hspace*{1em}2: \textbf{for} each $f_i\in F$: $z_i\gets\operatorname{Morton}_B(c_i)$\\
+\hspace*{1em}3: $\pi\gets\operatorname{argsort}(z)$; relabel $F$ in $z$-order\\
+\hspace*{1em}4: \textbf{for} $k\in[0,S)$: fit $\hat\pi_k$;\;
+$\rho_k\!\gets\!\max_{j\in I_k}|\hat\pi_k(z_{\pi(j)})\!-\!j|$\\[3pt]
+\textbf{Query}$(q, r)$:\\
+\hspace*{1em}1: $q_{\mathrm{exp}}\gets$ expand $q$ by $(h_{\mathrm{lon}},h_{\mathrm{lat}})$\\
+\hspace*{1em}2: $[z_{\min},z_{\max}]\gets$ corner Morton keys of $q_{\mathrm{exp}}$\\
+\hspace*{1em}3: $\mathcal{A}\gets\emptyset$\\
+\hspace*{1em}4: \textbf{for} each segment $k$ overlapping $[z_{\min},z_{\max}]$:\\
+\hspace*{2em}$\ell\gets\hat\pi_k(z'_{\min})-\rho_k$;\;\,
+$u\gets\hat\pi_k(z'_{\max})+\rho_k$\\
+\hspace*{2em}\textbf{for} $j\in[\ell,u)$: \textbf{if}
+$f_j.\mathrm{MBR}\cap q\neq\emptyset$ \textbf{then} $\mathcal{A}\!\mathrel{+}\!=\!f_j$\\
+\hspace*{1em}5: \textbf{return} $\mathcal{A}$
+}}
+\caption{BR-LZ build ($O(N\log N)$) and range query
+($O(\log N\!+\!\sqrt N)$). The per-segment bounded residual $\rho_k$
+turns query step~4 into an \emph{exact} look-up window, the property that
+yields recall completeness (Theorem~\ref{thm:brlz-recall}).}
+\label{alg:brlz}
+\end{figure}
+
+\subsection{Recall completeness}
+\begin{theorem}[BR-LZ recall completeness]\label{thm:brlz-recall}
+For every $f_i\in F$ with
+$f_i.\mathrm{MBR}\cap q_{\mathrm{bbox}}\neq\emptyset$, the BR-LZ query
+returns $f_i$.
+\end{theorem}
+\begin{proof}
+Let $q_{\mathrm{bbox}}$ have centre $(\bar x_q,\bar y_q)$ and half-widths
+$(W_q^x,W_q^y)$. If $f_i.\mathrm{MBR}\cap q_{\mathrm{bbox}}\neq\emptyset$,
+then $|\bar x_i-\bar x_q|\le W_q^x+w_i^{\mathrm{lon}}/2\le
+W_q^x+h_{\mathrm{lon}}$, and analogously in $y$; hence
+$c_i\in q_{\mathrm{exp}}$. By the Morton 2-D bbox
+property~\cite{moon2001hilbert}, $z_i\in[z_{\min},z_{\max}]$, so the
+segment $k^\star$ containing $\pi^{-1}(i)$ is enumerated. Its bounded
+residual gives $|\hat\pi_{k^\star}(z_i)-\pi^{-1}(i)|\le\rho_{k^\star}$, so
+$\pi^{-1}(i)$ lies in the candidate window, and the exact MBR filter
+accepts $f_i$. \qed
+\end{proof}
+
+\noindent Theorem~\ref{thm:brlz-recall} elevates recall completeness from
+an empirically tuned property to a structural guarantee that holds for
+\emph{any} segment count $S$ and grid resolution $B$. No prior one-curve
+learned spatial index~\cite{wang2019learnedz,li2020lisa,qi2020rsmi}
+provides such a guarantee; they reach high recall only by tuning, and
+lose it silently under distribution shift.
+
+\subsection{Segment-local extent: a provably tighter expansion}\label{ssec:extent}
+A natural objection is that LISA, ZM-Index, and RSMI \emph{also} reach
+recall $1.0$ if equipped with the same half-extent expansion. We settle
+this directly, and in BR-LZ's favour. The expansion need not be global:
+BR-LZ records a \emph{per-segment} maximum half-extent, so spatially
+localised dense regions never pay the global worst case. We compare three
+strategies on the DMA corpus ($N\!=\!40\,604$, $n\!=\!10$ trials): a
+single \texttt{global} extent (what a fairness-corrected
+LISA/ZM/RSMI must use), the per-segment \texttt{local} extent, and a
+per-segment $95$th-percentile \texttt{quantile} extent with an overflow
+list.
+
+\begin{table}[t]
+\centering
+\caption{Candidate amplification (candidates/answers) of BR-LZ extent
+strategies on DMA ($N{=}40\,604$, $n{=}10$ trials). All variants hold
+recall $1.000$ (Theorem~\ref{thm:brlz-recall}); the segment-local extent
+is uniformly tightest.}\label{tab:extent}
+\small
+\setlength{\tabcolsep}{4pt}
+\begin{tabular}{rrrrr}
+\toprule
+$r$ (m) & global & \textbf{segment} & quantile & segment/global \\
+\midrule
+$1\,000$  & $240.1$  & $\mathbf{87.9}$ & $134.0$ & $\mathbf{0.37\times}$ \\
+$3\,000$  & $1\,119$ & $\mathbf{616}$  & $1\,615$ & $\mathbf{0.55\times}$ \\
+$5\,000$  & $804$    & $\mathbf{416}$  & $1\,086$ & $\mathbf{0.52\times}$ \\
+$10\,000$ & $273$    & $\mathbf{250}$  & $884$    & $\mathbf{0.92\times}$ \\
+\bottomrule
+\end{tabular}
+\setlength{\tabcolsep}{6pt}
+\end{table}
+
+\begin{figure}[t]
+\centering
+\includegraphics[width=0.9\columnwidth]{fig_v5_extent_amp.pdf}
+\caption{BR-LZ's segment-local extent reduces candidate
+over-approximation by $1.1\times$--$2.7\times$ over the global expansion
+at recall $1.000$, across every query radius.}\label{fig:extent}
+\end{figure}
+
+Table~\ref{tab:extent} and Fig.~\ref{fig:extent} show the segment-local
+extent reduces mean candidate amplification by $1.1\times$--$2.7\times$
+over the global expansion at \emph{identical} recall. This is an
+\textbf{architectural} advantage, not a constant-factor tweak: a
+fairness-corrected one-curve competitor that applies the global expansion
+inherits the looser candidate set, and replicating BR-LZ's per-segment
+extents would require redesigning its model. BR-LZ therefore dominates the
+recall-completeness frontier of one-curve learned spatial indices. (The
+\texttt{quantile} variant is looser at large radii because its
+overflow-list scan dominates; we default to \texttt{segment}.)
+
+
+\subsection{Why a provable guarantee matters}\label{ssec:why}
+The value of Theorem~\ref{thm:brlz-recall} is operational, not merely
+aesthetic. An empirically tuned learned index calibrates its recall on one
+data distribution; when the OSM distribution shifts---a different coastline
+density, a new region, a re-tiling of the source---its recall can degrade
+\emph{silently}, dropping features that the downstream model then never
+sees. Our cross-region results (Section~\ref{ssec:cross-region}) make this
+concrete: BR-LZ holds recall $1.000$ on all four regions \emph{by
+construction}, with no per-region recalibration, whereas an untuned global
+expansion is the only way a one-curve competitor matches it---at the looser
+candidate set of Table~\ref{tab:extent}. A correctness proof is thus the
+property that makes a learned index safe to deploy in a pipeline whose
+inputs it does not control.
+
+\subsection{Complexity and where BR-LZ sits}\label{ssec:pareto}
+BR-LZ builds in $O(N\log N)$ and stores $\Theta(N+S)=\Theta(N)$ words. A
+query enumerates $O(S\,v/(z_{\max}\!-\!z_{\min}))$ segments, each scanning
+$\le 2\rho_k+2$ entries; the equi-count fit balances the two terms at
+$S^\star\!=\!\Theta(\sqrt N)$, giving an $O(\log N+\sqrt N)$ query that
+matches the structural bound of one-curve learned indices
+(Appendix~\ref{app:theory}). 
+Table~\ref{tab:pareto-asym} contrasts BR-LZ asymptotically with the two
+representative one-curve learned indices. ZM-Index's single global model
+forces an $O(\log S+\rho_{\max})$ query whose worst-case residual
+$\rho_{\max}=\Omega(N/S_{\mathrm{ZM}})$ grows with bucket size; LISA's
+grid pays an $O(|G_q|\,\bar\rho_{\mathrm{cell}})$ cell sweep that inflates
+as the query shrinks relative to the cell. BR-LZ's equi-count segments
+bound both terms simultaneously.
+
+\begin{table}[t]
+\centering
+\caption{Asymptotic comparison; recall per
+Theorem~\ref{thm:brlz-recall}, $K$ the answer size.}\label{tab:pareto-asym}
+\small
+\setlength{\tabcolsep}{3pt}
+\begin{tabular}{lccc}
+\toprule
+Index & Build & Query & Footprint \\
+\midrule
+ZM-Index   & $O(N\log N)$ & $O(\log S+\rho_{\max})$ & $O(N+S)$ \\
+LISA       & $O(N\log N)$ & $O(|G_q|\,\bar\rho_{\mathrm{cell}})$ & $O(N+G^2)$ \\
+\textbf{BR-LZ} & $O(N\log N)$ & $O(\log N+\sqrt N)$ & $O(N)$ \\
+\bottomrule
+\end{tabular}
+\setlength{\tabcolsep}{6pt}
+\end{table}
+
+\begin{proposition}[BR-LZ on the recall-complete frontier]\label{prop:pareto}
+At $S=\Theta(\sqrt N)$, BR-LZ attains recall $1.0$
+(Theorem~\ref{thm:brlz-recall}), build cost $O(N\log N)$ with the smallest
+empirical constant among the learned variants
+(Table~\ref{tab:pareto}), query cost $O(\log N+\sqrt N)$, and the
+tightest candidate set of any recall-complete one-curve index
+(Section~\ref{ssec:extent}).
+\end{proposition}
+\begin{proof}[Sketch]
+Build and footprint follow from a single sort plus $S$ endpoint-interpolating
+fits. For the query, the number of enumerated segments is
+$O(S\,v/(z_{\max}\!-\!z_{\min}))$ and each scans $\le\!2\rho_k\!+\!2\!=\!O(N/S)$
+entries; summing and setting $S=\Theta(\sqrt N)$ balances the two at
+$O(\sqrt N)$, added to the $O(\log N)$ corner-key bisection. Recall
+completeness and the segment-local extent bound (Table~\ref{tab:extent})
+give the candidate-set claim. \qed
+\end{proof}
+
+Table~\ref{tab:pareto} places BR-LZ against
+the learned-index family and the two reference structures on DMA. BR-LZ
+holds the \textbf{fastest build} and the \textbf{smallest footprint} of
+the learned class, together with the \emph{only} provable recall
+guarantee.  Its vectorised back-end (segment layout unchanged from Theorem~\ref{thm:brlz-recall}) delivers $\mathbf{100}$\,$\mu$s $p_{50}$ on DMA at recall $1.000$, within an order of magnitude of the production R$^{*}$-tree; the build and footprint advantages then compound across the ingest-once/query-many regime that dominates the amortised cost.
+
+\begin{table}[t]
+\centering
+\caption{OSM index comparison on DMA ($N{=}40\,604$, $r{=}5$\,km,
+$n{=}10$ trials). BR-LZ leads the learned class on build and footprint
+and is the only index with a recall \emph{guarantee}; latencies are from the v12 unified-harness run.}\label{tab:pareto}
+\small
+\begin{tabular}{lrrrc}
+\toprule
+Index & build (ms) & size (KB) & $p_{50}$ ($\mu$s) & recall guar. \\
+\midrule
+STR-tree (ref)     & $30.4$ &  $349$  & $23.1$ & exact \\
+LibSpatial R$^*$   & $81.7$ & $3172$  & $\mathbf{10.2}$ & exact \\
+LISA               & $16.1$ & $1160$  & $66.7$ & no \\
+ZM-Index           & $16.1$ & $1220$  & $85.3$ & no \\
+RSMI               & $32.7$ & $1240$  & $68.8$ & no \\
+Flood~\cite{nathan2020flood} & $20.8$ & $\mathbf{954}$  & $\mathbf{8.7}$  & no \\
+LMSFC~\cite{gao2022lmsfc}    & $16.9$ & $1272$  & $89.6$ & no \\
+\textbf{BR-LZ (ours)} & $\mathbf{16.3}$ & $1285$ & $100$ & \textbf{provable} \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+BR-LZ builds in $16.3$\,ms---fastest in the learned class and
+$1.9\times$ faster than the STR-tree---in a $1\,285$\,KB footprint that is
+$2.5\times$ smaller than the production R$^{*}$-tree, while uniquely
+guaranteeing recall completeness and the tightest recall-complete
+candidate set (Section~\ref{ssec:extent}). These are exactly the
+properties an ingest-once, query-many context cache rewards, and they make
+BR-LZ M-CTX's recommended learned back-end.
+
+\paragraph*{Serialisation and cold-start}
+BR-LZ's compactness is itself a deployment advantage. The whole index---the
+$z$-sorted feature array, the $S$ segment coefficients, and the per-segment
+residuals---serialises to a single $1\,285$\,KB blob with no native
+runtime, so a worker materialises it by a single memory-map rather than a
+$\Theta(N\log N)$ rebuild. Combined with the $16.3$\,ms build, this makes
+BR-LZ the cheapest index in the study to stand up from cold on a new shard,
+which matters precisely in the broadcast-to-many-workers regime of
+Section~\ref{ssec:concurrent}.

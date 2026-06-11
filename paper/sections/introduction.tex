@@ -1,0 +1,88 @@
+\section{Introduction}\label{sec:intro}
+
+Maritime traffic produces the largest publicly available class of
+moving-object trajectories: open AIS feeds publish on the order of
+$10^{9}$ position fixes per year at a $20$-second cadence, each annotated
+with ship type, speed, and course. A decisive recent finding is that
+maritime trajectory prediction is no longer a trajectory-only problem.
+The surrounding \emph{environment}---coastline, breakwaters, navigable
+channels---and the \emph{social context}---neighbouring vessels---jointly
+determine plausible futures, and modelling them reduces average
+displacement error (ADE) by tens of metres at fixed model
+capacity~\cite{envshipbench2026}.\footnote{Reference~\cite{envshipbench2026}
+is a companion benchmark; M-CTX is independently evaluable and every
+result here is reproducible from public data (a synthetic generator plus
+public AIS and public OSM).}
+
+\paragraph*{The context pipeline, not the model, is the bottleneck}
+This accuracy comes at a systems cost that has become the dominant term
+in the end-to-end budget. For every AIS anchor, the reference pipeline
+(i)~loads an OSM tile overlapping a $5$\,km circle, parses its way list,
+and clips the relevant segments; (ii)~rasterises those segments onto a
+$128\!\times\!128$ grid and computes two signed distance fields; and
+(iii)~scans a snapshot of all AIS positions for vessels within $3$\,km.
+Profiling on a $1\,000$-anchor subset (Section~\ref{sec:problem}) shows
+the SDF stage alone consumes $50\%$ of the wall-clock---$89\%$ of it
+inside a quadratic distance transform---and neighbour scanning a further
+$25\%$. Projected to the full $5.48$-million-window corpus, context
+construction takes $\approx\!17$ CPU-days. The model is fast; the context
+is not.
+
+\paragraph*{Context retrieval is a database workload}
+Our central observation is that these three operations are textbook
+database queries mis-implemented as brute-force numerical kernels:
+(i)~range queries over a static OSM dataset---the canonical R-tree
+workload~\cite{guttman1984rtree}; (ii)~$k$NN queries over a stream of
+moving points---the moving-object-index
+workload~\cite{saltenis2000tpr,jensen2004bx}; and (iii)~repeated exact
+distance transforms over $128\!\times\!128$ rasters---a separable
+$\Theta(HW)$ computation~\cite{felzenszwalb2004distance}. Neither the ML
+community (which treats context as preprocessing) nor the database
+community (which has not seen it as a workload) has indexed it. Recasting
+context retrieval as a single, indexable spatial-database workload is
+what unlocks the orders-of-magnitude acceleration we report---while
+leaving the downstream model byte-for-byte unchanged.
+
+\paragraph*{Contributions}
+\begin{itemize}
+\item[\textbf{C1}] \textbf{A new workload and its formalisation}
+   (Section~\ref{sec:problem}). We are the first to characterise the
+   context-retrieval pipeline of trajectory learning as a unified spatial
+   database workload, and to show through profiling that it---not model
+   inference---dominates training cost.
+
+\item[\textbf{C2}] \textbf{BR-LZ, a recall-complete learned spatial
+   index} (Section~\ref{sec:brlz}). We introduce the Bounded-Residual
+   Learned $Z$-index, the first one-curve learned spatial index to
+   \emph{prove} recall completeness for MBR-overlap range queries
+   (Theorem~\ref{thm:brlz-recall}), with a segment-local extent that
+   tightens candidate over-approximation by $1.1\times$--$2.7\times$ over
+   the global expansion every one-curve learned index requires for the
+   same recall, at the fastest build and smallest footprint in its class.
+
+\item[\textbf{C3}] \textbf{Linear-time SDF compute with storage
+   co-design} (Section~\ref{sec:sdf}). We replace the pipeline's
+   quadratic distance transform with a linear-time engine
+   ($\mathbf{163\times}$ faster at exact equivalence) and establish,
+   through a $48$-configuration study, a $\mathbf{64\times}$ context-cache
+   compression that preserves ADE within $0.04$\,m, turning a $720$\,GB
+   working set into an $11$\,GB one.
+
+\item[\textbf{C4}] \textbf{A bit-exact framework and cross-region
+   benchmark} (Sections~\ref{sec:overview},
+   \ref{sec:neighbor}--\ref{sec:downstream}). M-CTX is a schema-identical
+   drop-in that preserves four pretrained models' predictions
+   byte-for-byte, validated across four real maritime regions, nine
+   baseline systems, scaling to $40$\,M features, and $10^{7}$-record
+   streaming.
+\end{itemize}
+
+\noindent Beyond maritime analytics, M-CTX shows that the retrieval
+workloads hidden inside large spatiotemporal learning pipelines are
+first-class database problems, and that learned-index machinery---once
+equipped with the recall guarantees those workloads demand---transfers
+cleanly to them. The remainder of the paper follows the contribution
+order above, closing with experiments (Section~\ref{sec:bench}) and a
+conclusion (Section~\ref{sec:conclusion}); complexity proofs, the joint
+context index, the full SDF precision sweep, extended scaling, and the
+reproducibility recipe appear in the appendices.
